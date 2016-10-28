@@ -101,8 +101,8 @@
 #include "TaskNotify.h"
 #include "IntQueue.h"
 
-/* Added Galileo serial support. */
-#include "galileo_support.h"
+/* 8295 and printf. */
+#include "pc_support.h"
 
 /* Set to 1 to sit in a loop on start up, allowing a debugger to connect to the
 application before main() executes. */
@@ -142,7 +142,6 @@ void vApplicationTickHook( void );
  * demo.
  */
 static void prvSetupHardware( void );
-static void prvCalibrateLVTimer( void );
 
 /*
  * If mainWAIT_FOR_DEBUG_CONNECTION is set to 1 then the following function will
@@ -151,14 +150,6 @@ static void prvCalibrateLVTimer( void );
  * then the following function does nothing.
  */
 static void prvLoopToWaitForDebugConnection( void );
-
-/*
- * Helper functions used when an assert is triggered.  The first periodically
- * displays an assert message, and the second clears the assert message when the
- * function called by the configASSERT() macro is exited.
- */
-static void prvDisplayAssertion( const char * pcFile, unsigned long ulLine );
-static void prvClearAssertionLine( void );
 
 /*-----------------------------------------------------------*/
 
@@ -176,12 +167,12 @@ int main( void )
 	of this file. */
 	#if( mainCREATE_SIMPLE_BLINKY_DEMO_ONLY == 1 )
 	{
-		g_printf_rcc( 3, 2, DEFAULT_SCREEN_COLOR, "Running main_blinky()." );
+		printf( "Running main_blinky().\n" );
 		main_blinky();
 	}
 	#else
 	{
-		g_printf_rcc( 3, 2, DEFAULT_SCREEN_COLOR, "Running main_full()." );
+		printf( "Running main_full().\n" );
   		main_full();
 	}
 	#endif
@@ -241,58 +232,9 @@ void vApplicationIdleHook( void )
 }
 /*-----------------------------------------------------------*/
 
-static void prvDisplayAssertion( const char * pcFile, unsigned long ulLine )
-{
-extern void vMilliSecondDelay( uint32_t DelayTime );
-const uint32_t ul500ms = 500UL;
-
-	/* Display assertion file and line. Don't use the gated g_printf just in
-	the assert was triggered while the gating semaphore was taken.  Always print
-	on line 23. */
-	UngatedMoveToScreenPosition( 23, 2 );
-	printf( ANSI_COLOR_RED );
-	printf( "ASSERT: File = %s, Line = %u\n\r", pcFile, ulLine );
-	printf( ANSI_COLOR_RESET );
-	printf( ANSI_SHOW_CURSOR );
-	vMilliSecondDelay( ul500ms );
-}
-/*-----------------------------------------------------------*/
-
-static void prvClearAssertionLine( void )
-{
-	UngatedMoveToScreenPosition( 23, 1 );
-	printf( ANSI_COLOR_RESET );
-	printf( ANSI_CLEAR_LINE );
-	printf( ANSI_HIDE_CURSOR );
-}
-/*-----------------------------------------------------------*/
-
 void vAssertCalled( const char * pcFile, unsigned long ulLine )
 {
-volatile uint32_t ul = 0;
-
-	( void ) pcFile;
-	( void ) ulLine;
-
-	taskENTER_CRITICAL();
-	{
-		/* Set ul to a non-zero value or press a key to step out of this
-		function in order to inspect the location of the assert(). */
-
-		/* Clear any pending key presses. */
-		while( ucGalileoGetchar() != 0 )
-		{
-			/* Nothing to do here - the key press is just discarded. */
-		}
-
-		do
-		{
-		   prvDisplayAssertion(pcFile, ulLine);
-		} while ( ( ul == pdFALSE ) && ( ucGalileoGetchar() == 0 ) );
-
-		prvClearAssertionLine();
-	}
-	taskEXIT_CRITICAL();
+	printf( "ASSERT: File = %s, Line = %d\n", pcFile, ulLine );
 }
 /*-----------------------------------------------------------*/
 
@@ -324,11 +266,6 @@ void vApplicationTickHook( void )
 
 static void prvSetupHardware( void )
 {
-	/* Initialise the serial port and GPIO. */
-	vInitializeGalileoSerialPort( DEBUG_SERIAL_PORT );
-	vGalileoInitializeGpioController();
-	vGalileoInitializeLegacyGPIO();
-
 	/* Initialise HPET interrupt(s) */
 	#if( ( mainCREATE_SIMPLE_BLINKY_DEMO_ONLY != 1 ) && ( hpetHPET_TIMER_IN_USE != 0 ) )
 	{
@@ -337,15 +274,8 @@ static void prvSetupHardware( void )
 	}
 	#endif
 
-	/* Setup the LED. */
-	vGalileoLegacyGPIOInitializationForLED();
-
-	/* Demonstrates how to calibrate LAPIC Timer.  The calibration value
-	calculated here may get overwritten when the scheduler starts. */
-	prvCalibrateLVTimer();
-
-	/* Print RTOS loaded message. */
-	vPrintBanner();
+	vScreenClear();
+	vInitialize8259Chips();
 }
 /*-----------------------------------------------------------*/
 
@@ -354,36 +284,8 @@ static void prvLoopToWaitForDebugConnection( void )
 	/* Debug if define = 1. */
 	#if( mainWAIT_FOR_DEBUG_CONNECTION == 1 )
 	{
-	/* When using the debugger, set this value to pdFALSE, and the application
-	will sit in a loop at the top of main() to allow the debugger to attached
-	before the application starts running.  Once attached, set
-	ulExitResetSpinLoop to a non-zero value to leave the loop. */
-	volatile uint32_t ulExitResetSpinLoop = pdFALSE;
-
-		/* Must initialize UART before anything will print. */
-		vInitializeGalileoSerialPort( DEBUG_SERIAL_PORT );
-
-		/* RTOS loaded message. */
-		vPrintBanner();
-
-		/* Output instruction message. */
-		MoveToScreenPosition( 3, 1 );
-		g_printf( DEFAULT_SCREEN_COLOR );
-		g_printf( " Waiting for JTAG connection.\n\n\r" );
-		g_printf( ANSI_COLOR_RESET );
-		g_printf( " Once connected, either set ulExitResetSpinLoop to a non-zero value,\n\r" );
-		g_printf( " or you can [PRESS ANY KEY] to start the debug session.\n\n\r" );
-		printf( ANSI_SHOW_CURSOR );
-
-		/* Use the debugger to set the ulExitResetSpinLoop to a non-zero value
-		or press a key to exit this loop, and step through the application.  In
-		Eclipse, simple hover over the variable to see its value in a pop-over
-		box, then edit the value in the pop-over box. */
-		do
-		{
-			portNOP();
-
-		} while( ( ulExitResetSpinLoop == pdFALSE ) && ( ucGalileoGetchar() == 0 ) );
+		int i;
+		for (i = 0; i < 1000000000; i++) ;
 	}
 	#endif
 }
@@ -414,33 +316,4 @@ size_t xSize;
 		portAPIC_EOI = 0;
 		x--;
 	} while( x > 0 );
-}
-/*-----------------------------------------------------------*/
-
-static void prvCalibrateLVTimer( void )
-{
-uint32_t uiInitialTimerCounts, uiCalibratedTimerCounts;
-
-	/* Disable LAPIC Counter. */
-	portAPIC_LVT_TIMER = portAPIC_DISABLE;
-
-	/* Calibrate the LV Timer counts to ensure it matches the HPET timer over
-	extended periods. */
-	uiInitialTimerCounts = ( ( configCPU_CLOCK_HZ >> 4UL ) / configTICK_RATE_HZ );
-	uiCalibratedTimerCounts = uiCalibrateTimer( 0, hpetLVTIMER );
-
-	if( uiCalibratedTimerCounts != 0 )
-	{
-		uiInitialTimerCounts = uiCalibratedTimerCounts;
-	}
-
-	/* Set the interrupt frequency. */
-	portAPIC_TMRDIV = portAPIC_DIV_16;
-	portAPIC_TIMER_INITIAL_COUNT = uiInitialTimerCounts;
-
-	/* Enable LAPIC Counter. */
-	portAPIC_LVT_TIMER = portAPIC_TIMER_PERIODIC | portAPIC_TIMER_INT_VECTOR;
-
-	/* Sometimes needed. */
-	portAPIC_TMRDIV = portAPIC_DIV_16;
 }

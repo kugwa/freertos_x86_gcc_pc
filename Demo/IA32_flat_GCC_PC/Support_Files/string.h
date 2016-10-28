@@ -15,6 +15,7 @@
  */
 unsigned long strlen( const char* pcString );
 int strcmp( const char *pcString1, const char *pcString2 );
+char *strcpy( char *pcDest, const char *pcSource );
 void *memset( void *pvDest, int iValue, unsigned long ulBytes );
 void *memcpy( void *pvDest, const void *pvSource, unsigned long ulBytes );
 int memcmp( const void *pvMem1, const void *pvMem2, unsigned long ulBytes );

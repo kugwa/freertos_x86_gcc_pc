@@ -74,6 +74,9 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+/* Timer Calibration */
+#include "pc_support.h"
+
 #if ( configUSE_PORT_OPTIMISED_TASK_SELECTION == 1 )
 	/* Check the configuration. */
 	#if( configMAX_PRIORITIES > 32 )
@@ -374,15 +377,6 @@ static void prvSetupTimerInterrupt( void )
 extern void vPortAPICErrorHandlerWrapper( void );
 extern void vPortAPICSpuriousHandler( void );
 
-	/* Initialise LAPIC to a well known state. */
-	portAPIC_LDR = 0xFFFFFFFF;
-	portAPIC_LDR = ( ( portAPIC_LDR & 0x00FFFFFF ) | 0x00000001 );
-	portAPIC_LVT_TIMER = portAPIC_DISABLE;
-	portAPIC_LVT_PERF = portAPIC_NMI;
-	portAPIC_LVT_LINT0 = portAPIC_DISABLE;
-	portAPIC_LVT_LINT1 = portAPIC_DISABLE;
-	portAPIC_TASK_PRIORITY = 0;
-
 	/* Install APIC timer ISR vector. */
 	prvSetInterruptGate( ( uint8_t ) portAPIC_TIMER_INT_VECTOR, vPortTimerHandler, portIDT_FLAGS );
 
@@ -395,15 +389,8 @@ extern void vPortAPICSpuriousHandler( void );
 	/* Install spurious interrupt vector. */
 	prvSetInterruptGate( ( uint8_t ) portAPIC_SPURIOUS_INT_VECTOR, vPortAPICSpuriousHandler, portIDT_FLAGS );
 
-	/* Enable the APIC, mapping the spurious interrupt at the same time. */
-	portAPIC_SPURIOUS_INT = portAPIC_SPURIOUS_INT_VECTOR | portAPIC_ENABLE_BIT;
-
-	/* Set timer error vector. */
-	portAPIC_LVT_ERROR = portAPIC_LVT_ERROR_VECTOR;
-
 	/* Set the interrupt frequency. */
-	portAPIC_TMRDIV = portAPIC_DIV_16;
-	portAPIC_TIMER_INITIAL_COUNT = ( ( configCPU_CLOCK_HZ >> 4UL ) / configTICK_RATE_HZ ) - 1UL;
+	vCalibrateTimer(portAPIC_TIMER_INT_VECTOR, portAPIC_LVT_ERROR_VECTOR, portAPIC_SPURIOUS_INT_VECTOR);
 }
 /*-----------------------------------------------------------*/
 

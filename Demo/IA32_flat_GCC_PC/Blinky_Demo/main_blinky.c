@@ -112,12 +112,13 @@
 #include "task.h"
 #include "semphr.h"
 
-/* Added Galileo SERIAL support */
-#include "galileo_support.h"
+/* printf. */
+#include "pc_support.h"
 
 /* Priorities at which the tasks are created. */
 #define mainQUEUE_RECEIVE_TASK_PRIORITY		( tskIDLE_PRIORITY + 2 )
 #define	mainQUEUE_SEND_TASK_PRIORITY		( tskIDLE_PRIORITY + 1 )
+#define mainQUEUE_LOOP_TASK_PRIORITY		( tskIDLE_PRIORITY + 3 )
 
 /* The rate at which data is sent to the queue.  The 200ms value is converted
 to ticks using the portTICK_PERIOD_MS constant. */
@@ -135,6 +136,7 @@ the queue empty. */
  */
 static void prvQueueReceiveTask( void *pvParameters );
 static void prvQueueSendTask( void *pvParameters );
+static void prvLoopTask( void *pvParameters );
 
 /*
  * Called by main() to create the simply blinky style application if
@@ -167,7 +169,8 @@ void main_blinky( void )
 					mainQUEUE_RECEIVE_TASK_PRIORITY, 	/* The priority assigned to the task. */
 					NULL );								/* The task handle is not required, so NULL is passed. */
 
-		xTaskCreate( prvQueueSendTask, "TX", configMINIMAL_STACK_SIZE * 2, NULL, mainQUEUE_SEND_TASK_PRIORITY, NULL );
+		xTaskCreate( prvQueueSendTask, "Tx", configMINIMAL_STACK_SIZE * 2, NULL, mainQUEUE_SEND_TASK_PRIORITY, NULL );
+		xTaskCreate( prvLoopTask, "Loop", configMINIMAL_STACK_SIZE * 2, NULL, mainQUEUE_LOOP_TASK_PRIORITY, NULL );
 
 		/* Start the tasks and timer running. */
 		vTaskStartScheduler();
@@ -200,6 +203,7 @@ const uint32_t ulValueToSend = 100UL;
 	{
 		/* Place this task in the blocked state until it is time to run again. */
 		vTaskDelayUntil( &xNextWakeTime, mainQUEUE_SEND_FREQUENCY_MS );
+		printf( "Send " );
 
 		/* Send to the queue - causing the queue receive task to unblock and
 		write to the COM port.  0 is used as the block time so the sending
@@ -212,14 +216,11 @@ const uint32_t ulValueToSend = 100UL;
 
 static void prvQueueReceiveTask( void *pvParameters )
 {
-uint32_t ulReceivedValue, ulLEDStatus;
+uint32_t ulReceivedValue;
 const uint32_t ulExpectedValue = 100UL;
 
 	/* Remove compiler warning about unused parameter. */
 	( void ) pvParameters;
-
-	/* Initial cursor position to skip a line) */
-	g_printf_rcc( 5, 2, DEFAULT_SCREEN_COLOR, "LED on the Galileo board should be blinking." );
 
 	for( ;; )
 	{
@@ -229,19 +230,27 @@ const uint32_t ulExpectedValue = 100UL;
 		xQueueReceive( xQueue, &ulReceivedValue, portMAX_DELAY );
 
 		/*  To get here something must have been received from the queue, but
-		is it the expected value?  If it is, write a message to the COMP
-		port. */
+		is it the expected value?  If it is, print a message. */
 		if( ulReceivedValue == ulExpectedValue )
 		{
-			/* Toggle the LED, and also print the LED toggle state to the
-			UART. */
-			ulLEDStatus = ulBlinkLED();
-
-			/* Print the LED status */
-			g_printf_rcc( 6, 2, DEFAULT_SCREEN_COLOR, "LED State = %d\r\n", ( int ) ulLEDStatus );
+			printf( "Receive " );
 			ulReceivedValue = 0U;
 		}
 	}
 }
 /*-----------------------------------------------------------*/
 
+static void prvLoopTask( void *pvParameters )
+{
+	TickType_t xNextWakeTime;
+	xNextWakeTime = xTaskGetTickCount();
+
+	/* Remove compiler warning about unused parameter. */
+	( void ) pvParameters;
+
+	while(1)
+	{
+		vTaskDelayUntil( &xNextWakeTime, pdMS_TO_TICKS( 1000 ) );
+		printf( "\n1 second\n" );
+	}
+}

@@ -35,7 +35,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "portmacro.h"
-#include "galileo_support.h"
+#include "pc_support.h"
 
 /*-----------------------------------------------------------------------
  * Function prototypes

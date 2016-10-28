@@ -161,5 +161,20 @@ volatile int iReturn, iIndex = 0;
 
 	return iReturn;
 }
+/*-----------------------------------------------------------*/
 
+char *strcpy( char *pcDest, const char *pcSource )
+{
+volatile int iIndex = 0;
 
+	/* Extremely crude standard library implementations in lieu of having a C
+	library. */
+
+	while( pcSource[ iIndex ] != 0x00 )
+	{
+		pcDest[ iIndex ] = pcSource[ iIndex ];
+		iIndex++;
+	}
+
+	return pcDest;
+}

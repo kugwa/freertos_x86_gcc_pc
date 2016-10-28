@@ -32,8 +32,7 @@
  * Any required includes
  *------------------------------------------------------------------------
  */
-#include "multiboot.h"
-#include "galileo_support.h"
+#include "pc_support.h"
 
 /*-----------------------------------------------------------------------
  * Any required local definitions
@@ -44,6 +43,11 @@
 #endif
 
 #define MUTEX_WAIT_TIME	(( TickType_t ) 8 )
+
+#define PIT_SECOND_DIV      (19)
+#define PIT_RELOAD          (1193182 / PIT_SECOND_DIV)
+#define PIT_RELOAD_LOW      (PIT_RELOAD & 0xff)
+#define PIT_RELOAD_HIGH     ((PIT_RELOAD >> 8) & 0xff)
 
 /*-----------------------------------------------------------------------
  * Function prototypes
@@ -62,12 +66,8 @@ uint32_t bootsign = 1UL;
  * Static variables
  *------------------------------------------------------------------------
  */
-static uint32_t bGalileoSerialPortInitialized = FALSE;
-static uint32_t uiLEDBlinkState = LED_OFF;
 static uint16_t usIRQMask = 0xfffb;
-static uint32_t UART_PCI_Base = 0UL;
-static uint32_t UART_MMIO_Base = 0UL;
-static SemaphoreHandle_t semPrintfGate = 0;
+static uint32_t pos = 0;
 
 /*------------------------------------------------------------------------
  * GDT default entries (used in GDT setup code)
@@ -127,235 +127,6 @@ void setsegs()
 }
 /*-----------------------------------------------------------*/
 
-/*-----------------------------------------------------------------------
-  * Debug serial port display update functions
-  *------------------------------------------------------------------------
-  */
- static void vCreatePrintfSemaphore( void )
- {
-	if (semPrintfGate == 0)
-	{
-		semPrintfGate = xSemaphoreCreateRecursiveMutex();
-		vQueueAddToRegistry( ( QueueHandle_t ) semPrintfGate, "g_printf_Mutex" );
-	}
- }
- /*-----------------------------------------------------------*/
-
- void ClearScreen(void)
- {
-	g_printf(ANSI_CLEAR_SB);
-	g_printf(ANSI_CLEAR_SCREEN);
- }
- /*-----------------------------------------------------------*/
-
- void MoveToScreenPosition(uint8_t row, uint8_t col)
- {
-	g_printf("%c[%d;%dH", (char) 0x1B, row, col);
- }
- /*-----------------------------------------------------------*/
-
- void UngatedMoveToScreenPosition(uint8_t row, uint8_t col)
- {
-	printf("%c[%d;%dH", (char) 0x1B, row, col);
- }
-/*-----------------------------------------------------------*/
-
- void SetScreenColor(const char *color)
- {
-	 g_printf("%s", color);
- }
- /*-----------------------------------------------------------*/
-
- void g_printf(const char *format, ...)
- {
-
-	 if (semPrintfGate == 0)
-		 vCreatePrintfSemaphore();
-
-	 if (xSemaphoreTakeRecursive(semPrintfGate, MUTEX_WAIT_TIME))
-	 {
-	     va_list arguments;
-	     va_start(arguments,format);
-	     print(0, format, arguments);
-	     xSemaphoreGiveRecursive(semPrintfGate);
-	 }
- }
- /*-----------------------------------------------------------*/
-
- void g_printf_rcc(uint8_t row, uint8_t col, const char *color, const char *format, ...)
- {
-	 if (semPrintfGate == 0)
-		 vCreatePrintfSemaphore();
-
-	 if (xSemaphoreTakeRecursive(semPrintfGate, MUTEX_WAIT_TIME ))
-	 {
-		 UngatedMoveToScreenPosition(row, col);
-		 printf("%s",color);
-	     va_list arguments;
-	     va_start(arguments,format);
-	     print(0, format, arguments);
-		 xSemaphoreGiveRecursive(semPrintfGate);
-	 }
-}
- /*-----------------------------------------------------------*/
-
- void vPrintBanner( void )
- {
-	 if (bGalileoSerialPortInitialized)
-	 {
-		/* Print an RTOSDemo Loaded message */
-		ClearScreen();
-		g_printf_rcc(1, 2, DEFAULT_BANNER_COLOR,
-		"%c[1mHELLO from the multiboot compliant FreeRTOS kernel!%c[0m",
-		(char) 0x1B, (char) 0x1B );
-		printf(ANSI_HIDE_CURSOR);
-	 }
- }
- /*-----------------------------------------------------------*/
-
-/*------------------------------------------------------------------------
- * Multiboot support (show parameters passed back from GRUB)
- *------------------------------------------------------------------------
- */
-void show_kernel_parameters( unsigned long magic, unsigned long addr )
-{
-	/* Set to 0 to quiet display. */
-	uint8_t print_values = 1;
-
-	/* Initialise serial port if necessary. */
-	vInitializeGalileoSerialPort(DEBUG_SERIAL_PORT);
-
-	if (print_values != 0)
-	{
-		ClearScreen();
-		g_printf(DEFAULT_SCREEN_COLOR);
-		MoveToScreenPosition(1, 2);
-		g_printf ("\n\r ...MULTIBOOT VALUES RETURNED FROM GRUB...\n\n\r");
-		g_printf(ANSI_COLOR_WHITE);
-	}
-
-	if (magic != MULTIBOOT_BOOTLOADER_MAGIC)
-	{
-		printf(ANSI_COLOR_RED);
-		if (print_values != 0)
-			g_printf (" Invalid magic number returned: 0x%08x\n\r", (unsigned) magic);
-		g_printf(ANSI_COLOR_RESET);
-	}
-	else
-	{
-	   multiboot_info_t *mbi;
-	   /* Set MBI to the address of the Multiboot information structure. */
-	   mbi = (multiboot_info_t *) addr;
-
-	   /* Is the command line passed? */
-	   if (CHECK_FLAG (mbi->flags, 2))
-			if (print_values != 0)
-				g_printf (" cmdline = %s\n\r", (char *) mbi->cmdline);
-
-	   /* Print out the flags. */
-	   if (print_values != 0)
-		   g_printf (" flags = 0x%08x\n\r", (unsigned) mbi->flags);
-
-	   /* Are mem_* valid? */
-	   if (CHECK_FLAG (mbi->flags, 0))
-			if (print_values != 0)
-				g_printf (" mem_lower = %u KB, mem_upper = %u KB\n\r",
-				(unsigned) mbi->mem_lower, (unsigned) mbi->mem_upper);
-
-	   /* Is boot_device valid? */
-	   if (CHECK_FLAG (mbi->flags, 1))
-			if (print_values != 0)
-				g_printf (" boot_device = 0x%08x\n\r", (unsigned) mbi->boot_device);
-
-	   if (CHECK_FLAG (mbi->flags, 3))
-	   {
-		   module_t *mod;
-		   int i;
-		   if (print_values != 0)
-			   g_printf (" mods_count = %d, mods_addr = 0x%08x\n\r",
-				(int) mbi->mods_count, (int) mbi->mods_addr);
-		   for (i = 0, mod = (module_t *) mbi->mods_addr;
-				i < (int)mbi->mods_count;
-			    i++, mod++)
-		   {
-				if (print_values != 0)
-					g_printf ("    mod_start = 0x%08x, mod_end = 0x%08x, cmdline = %s\n\r",
-					(unsigned) mod->mod_start,
-					(unsigned) mod->mod_end,
-					(char *) mod->string);
-		   }
-	   }
-
-       /* Bits 4 and 5 are mutually exclusive! */
-       if (CHECK_FLAG (mbi->flags, 4) && CHECK_FLAG (mbi->flags, 5))
-       {
-    	   if (print_values != 0)
-    		   g_printf (" Both bits 4 and 5 are set.\n\r");
-       }
-       else
-       {
-           /* Is the symbol table of a.out valid? */
-           if (CHECK_FLAG (mbi->flags, 4))
-           {
-        	   aout_symbol_table_t *multiboot_aout_sym = &(mbi->u.aout_sym);
-        	   if (print_values != 0)
-        		   g_printf (" multiboot_aout_symbol_table: tabsize = 0x%08x, "
-        		    "strsize = 0x%08x, addr = 0x%08x\n\r",
-    				(unsigned) multiboot_aout_sym->tabsize,
-    				(unsigned) multiboot_aout_sym->strsize,
-    				(unsigned) multiboot_aout_sym->addr);
-           }
-
-           /* Is the section header table of ELF valid? */
-           if (CHECK_FLAG (mbi->flags, 5))
-           {
-        	   elf_section_header_table_t *multiboot_elf_sec = &(mbi->u.elf_sec);
-        	   if (print_values != 0)
-        		    g_printf (" multiboot_elf_sec: num = %u, size = 0x%08x,"
-    				" addr = 0x%08x, shndx = 0x%04x\n\r",
-    				(unsigned) multiboot_elf_sec->num, (unsigned) multiboot_elf_sec->size,
-    				(unsigned) multiboot_elf_sec->addr, (unsigned) multiboot_elf_sec->shndx);
-           }
-
-           /* Are mmap_* valid? */
-           if (CHECK_FLAG (mbi->flags, 6))
-           {
-        	   memory_map_t *mmap;
-        	   if (print_values != 0)
-        		   g_printf (" mmap_addr = 0x%08x, mmap_length = 0x%08x\n\r",
-    			   (unsigned) mbi->mmap_addr, (unsigned) mbi->mmap_length);
-               for (mmap = (memory_map_t *) mbi->mmap_addr;
-                    (unsigned long) mmap < mbi->mmap_addr + mbi->mmap_length;
-                    mmap = (memory_map_t *) ((unsigned long) mmap
-                    + mmap->size + sizeof (mmap->size)))
-               {
-            	   if (print_values != 0)
-            		   g_printf ("    size = 0x%08x, base_addr = 0x%04x%04x,"
-    				   " length = 0x%04x%04x, type = 0x%04x\n\r",
-    				   (unsigned) mmap->size,
-    				   (uint16_t) mmap->base_addr_high,
-    				   (uint16_t)mmap->base_addr_low,
-    				   (uint16_t)mmap->length_high,
-    				   (uint16_t)mmap->length_low,
-    				   (unsigned) mmap->type);
-               }
-           }
-
-    	   if (print_values != 0)
-    	   {
-    		   g_printf(DEFAULT_SCREEN_COLOR);
-    		   g_printf ("\n\r Press any key to continue.\n\r");
-			   while (ucGalileoGetchar() == 0)
-			   {
-					__asm volatile( "NOP" );
-			   }
-    	   }
-           main();
-       }
-	}
-}
-/*-----------------------------------------------------------*/
-
 /*------------------------------------------------------------------------
  * 8259 PIC initialization and support code
  *------------------------------------------------------------------------
@@ -380,8 +151,6 @@ void show_kernel_parameters( unsigned long magic, unsigned long addr )
 	outb(ICU2+1, 0x28);     /* ICW2: base ivec 40           */
 	outb(ICU2+1, 0x2);      /* ICW3: slave on irq2          */
 	outb(ICU2+1, 0xb);      /* ICW4: buf. slave, 808x mode  */
-
-	vMicroSecondDelay (100);
 
 	/* always read ISR */
 	outb(ICU1, 0xb);        /* OCW3: set ISR on read        */
@@ -438,113 +207,99 @@ void show_kernel_parameters( unsigned long magic, unsigned long addr )
  }
  /*-----------------------------------------------------------*/
 
- /*-----------------------------------------------------------------------
-  * LED support for main_blinky()
-  *------------------------------------------------------------------------
-  */
- uint32_t ulBlinkLED(void)
- {
-	 if( uiLEDBlinkState == LED_OFF )
-	 {
-		 uiLEDBlinkState = LED_ON;
-	 }
-	 else
-	 {
-		 uiLEDBlinkState = LED_OFF;
-	 }
+/*-----------------------------------------------------------------------
+ * Screen functions
+ *------------------------------------------------------------------------
+ */
+void vScreenClear()
+{
+	char *pv = (char*)0xb8000;
+	unsigned int i;
 
-	 vGalileoBlinkLEDUsingLegacyGPIO(uiLEDBlinkState);
-
-	 return uiLEDBlinkState;
- }
- /*-----------------------------------------------------------*/
-
- /*-----------------------------------------------------------------------
-  * Serial port initialization code
-  *------------------------------------------------------------------------
-  */
- static void vInitializeGalileoUART(uint32_t portnumber)
- {
-	volatile uint8_t divisor = 24;
-	volatile uint8_t output_data = 0x3 & 0xFB & 0xF7;
-	volatile uint8_t input_data = 0;
-	volatile uint8_t lcr = 0;
-
-	if (portnumber == DEBUG_SERIAL_PORT)
-		UART_PCI_Base = MMIO_PCI_ADDRESS(0, 20, 5, 0);
-	else
-		UART_PCI_Base = MMIO_PCI_ADDRESS(0, 20, 1, 0);
-
-	uint32_t base = mem_read(UART_PCI_Base, 0x10, 4);
-	UART_MMIO_Base = base;
-
-	mem_write(base, R_UART_SCR, 1, 0xAB);
-
-	mem_write(base, R_UART_LCR, 1, output_data | B_UARY_LCR_DLAB);
-
-	mem_write(base, R_UART_BAUD_HIGH, 1, (uint8_t)(divisor >> 8));
-	mem_write(base, R_UART_BAUD_LOW, 1, (uint8_t)(divisor & 0xff));
-
-	mem_write(base, R_UART_LCR, 1, output_data);
-
-	mem_write(base, R_UART_FCR, 1, (uint8_t)(B_UARY_FCR_TRFIFIE |
-		B_UARY_FCR_RESETRF | B_UARY_FCR_RESETTF | 0x30));
-
-	input_data = mem_read(base, R_UART_MCR, 1);
-	input_data |= BIT1;
-	input_data &= ~BIT5;
-	mem_write(base, R_UART_MCR, 1, input_data);
-
-	lcr = mem_read(base, R_UART_LCR, 1);
-	mem_write(base, R_UART_LCR, 1, (uint8_t) (lcr & ~B_UARY_LCR_DLAB));
-
-	mem_write(base, R_UART_IER, 1, 0);
- }
- /*-----------------------------------------------------------*/
-
- void vInitializeGalileoSerialPort(uint32_t portnumber)
- {
-  	if( bGalileoSerialPortInitialized == FALSE )
- 	{
-		/* Initialise for 115200, 8, 1, none and no handshaking */
-  		vInitializeGalileoUART(portnumber);
-		bGalileoSerialPortInitialized = TRUE;
- 	}
- }
- /*-----------------------------------------------------------*/
-
- /*-----------------------------------------------------------------------
-  * Serial port support functions
-  *------------------------------------------------------------------------
-  */
- void vGalileoPrintc(char c)
- {
-	if (bGalileoSerialPortInitialized)
-	{
-		while((mem_read(UART_MMIO_Base, R_UART_LSR, 1) & B_UART_LSR_TXRDY) == 0);
-	 	mem_write(UART_MMIO_Base, R_UART_BAUD_THR, 1, c);
+	for (i = 0; i < 80 * 25 * 2; i += 2) {
+		pv[i] = ' ';
+		pv[i + 1] = 0x07;
 	}
- }
- /*-----------------------------------------------------------*/
+	pos = 0;
+}
+/*-----------------------------------------------------------*/
 
- uint8_t ucGalileoGetchar()
- {
-	uint8_t c = 0;
-	if (bGalileoSerialPortInitialized)
-	{
-		if((mem_read(UART_MMIO_Base, R_UART_LSR, 1) & B_UART_LSR_RXRDY) != 0)
-		 	c  = mem_read(UART_MMIO_Base, R_UART_BAUD_THR, 1);
+void vScreenPutchar(int c)
+{
+	char *pv = (char*)0xb8000;
+	if (pos >= 80 * 25 * 2) vScreenClear();
+	if (c == '\n') {
+		pos = (pos / 160 + 1) * 160;
 	}
-	  return c;
- }
- /*-----------------------------------------------------------*/
+	else {
+		pv[pos] = c;
+		pv[pos + 1] = 0x07;
+		pos += 2;
+	}
+}
+ 
+/*-----------------------------------------------------------------------
+ * APIC timer calibration and polling
+ *------------------------------------------------------------------------
+ */
+void vCalibrateTimer(uint32_t timer_vector, uint32_t error_vector, uint32_t spurious_vector)
+{
+    // initialize LAPIC to a well known state
+    APIC_LOCAL_APIC_REG(APIC_DFR) = 0xffffffff;
+    APIC_LOCAL_APIC_REG(APIC_LDR) = (APIC_LOCAL_APIC_REG(APIC_LDR) & 0x00ffffff) | 0x01;
+    APIC_LOCAL_APIC_REG(APIC_LVT_TMR) = APIC_DISABLE;
+    APIC_LOCAL_APIC_REG(APIC_LVT_PERF) = APIC_NMI;
+    APIC_LOCAL_APIC_REG(APIC_LVT_LINT0) = APIC_DISABLE;
+    APIC_LOCAL_APIC_REG(APIC_LVT_LINT1) = APIC_DISABLE;
+    APIC_LOCAL_APIC_REG(APIC_TASKPRIOR) = 0;
 
- void vGalileoPuts(const char *string)
- {
-	if (bGalileoSerialPortInitialized)
-	{
-	    while(*string)
-	    	vGalileoPrintc(*string++);
-	}
- }
- /*-----------------------------------------------------------*/
+    // software enable LAPIC
+    APIC_LOCAL_APIC_REG(APIC_SPURIOUS) = APIC_SW_ENABLE | spurious_vector;
+    APIC_LOCAL_APIC_REG(APIC_LVT_ERR) = error_vector;
+    APIC_LOCAL_APIC_REG(APIC_LVT_TMR) = timer_vector;
+    APIC_LOCAL_APIC_REG(APIC_TMRDIV) = 0x3;
+
+    // set PIT reload value
+    outb(0x43, 0x34);
+    outb(0x40, PIT_RELOAD_LOW);
+    outb(0x40, PIT_RELOAD_HIGH);
+
+    // reset LAPIC timer
+    APIC_LOCAL_APIC_REG(APIC_TMRINITCNT) = 0xffffffff;
+ 
+    // wait until PIT counter wraps
+    while(1) {
+        inb(0x40);
+        if (inb(0x40) != PIT_RELOAD_HIGH) break;
+    }
+    while(1) {
+        inb(0x40);
+        if (inb(0x40) == PIT_RELOAD_HIGH) break;
+    }
+
+    // save LAPIC timer remain count
+    uint32_t remain_count = APIC_LOCAL_APIC_REG(APIC_TMRCURRCNT);
+    APIC_LOCAL_APIC_REG(APIC_LVT_TMR) = APIC_DISABLE;
+
+    // start periodic mode with the correct initial count
+    APIC_LOCAL_APIC_REG(APIC_LVT_TMR) = timer_vector | TMR_PERIODIC;
+    APIC_LOCAL_APIC_REG(APIC_TMRDIV) = 0x3;
+    APIC_LOCAL_APIC_REG(APIC_TMRINITCNT) = ((0xffffffff - remain_count) * PIT_SECOND_DIV) / 1000; // APIC timer ticks in 1 ms
+}
+/*-----------------------------------------------------------*/
+
+void vPollUsTime(uint32_t us)
+{
+    uint32_t curr, last, elapse, goal;
+
+    last = APIC_LOCAL_APIC_REG(APIC_TMRCURRCNT);
+    elapse = 0;
+    goal = APIC_LOCAL_APIC_REG(APIC_TMRINITCNT) * us / 1000;
+
+    while (elapse < goal) {
+        curr = APIC_LOCAL_APIC_REG(APIC_TMRCURRCNT);
+        if (curr <= last) elapse += last - curr;
+        else elapse += (last - 0) + (APIC_LOCAL_APIC_REG(APIC_TMRINITCNT) - curr);
+        last = curr;
+    }
+}

@@ -28,8 +28,8 @@
  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  --------------------------------------------------------------------*/
 
-#ifndef __GALILEO_GEN_DEFS_H__
-#define __GALILEO_GEN_DEFS_H__
+#ifndef __PC_DEFS_H__
+#define __PC_DEFS_H__
 
 #ifdef __cplusplus
 	extern "C" {
@@ -45,9 +45,7 @@
 //---------------------------------------------------------------------
 // Printf prototype
 //---------------------------------------------------------------------
-extern int printf( const char *format, ... );
-extern int print( char **out, const char *format, va_list args );
-extern int sprintf(char *out, const char *format, ...);
+extern void printf( const char *format, ... );
 
 //---------------------------------------------------------------------
 // Prototypes (assembly language functions in startup.S)
@@ -212,5 +210,5 @@ extern int32_t outl( int32_t, int32_t) ;
 	} /* extern C */
 #endif
 
-#endif /* GALILEO_GEN_DEFS */
+#endif /* PC_DEFS */
 

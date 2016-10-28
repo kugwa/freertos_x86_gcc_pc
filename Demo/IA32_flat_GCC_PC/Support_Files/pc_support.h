@@ -28,8 +28,8 @@
  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  --------------------------------------------------------------------*/
 
-#ifndef __GALILEO_SUPPORT_H__
-#define __GALILEO_SUPPORT_H__
+#ifndef __PC_SUPPORT_H__
+#define __PC_SUPPORT_H__
 
 #ifdef __cplusplus
 	extern "C" {
@@ -40,8 +40,7 @@
 //---------------------------------------------------------------------
 #include "FreeRTOS.h"
 #include "semphr.h"
-#include "galileo_gen_defs.h"
-#include "GPIO_I2C.h"
+#include "pc_defs.h"
 #include "HPET.h"
 
 //---------------------------------------------------------------------
@@ -71,35 +70,6 @@ struct __attribute__ ((__packed__)) sd
 void setsegs();
 
 //---------------------------------------------------------------------
-// Debug serial port display update definitions
-//---------------------------------------------------------------------
-#define ANSI_CLEAR_SB			"\e[3J"
-#define ANSI_CLEAR_LINE			"\x1b[2K"
-#define ANSI_CLEAR_SCREEN		"\x1b[2J"
-#define ANSI_COLOR_RED     		"\x1b[31m"
-#define ANSI_COLOR_GREEN   		"\x1b[32m"
-#define ANSI_COLOR_YELLOW  		"\x1b[33m"
-#define ANSI_COLOR_BLUE    		"\x1b[34m"
-#define ANSI_COLOR_MAGENTA 		"\x1b[35m"
-#define ANSI_COLOR_CYAN    		"\x1b[36m"
-#define ANSI_COLOR_RESET   		"\x1b[0m"
-#define ANSI_COLOR_WHITE   		ANSI_COLOR_RESET
-
-#define DEFAULT_SCREEN_COLOR	ANSI_COLOR_YELLOW
-#define DEFAULT_BANNER_COLOR	ANSI_COLOR_CYAN
-
-#define ANSI_HIDE_CURSOR		"\x1b[?25l"
-#define ANSI_SHOW_CURSOR		"\x1b[?25h"
-
-void ClearScreen(void);
-void MoveToScreenPosition(uint8_t row, uint8_t col);
-void UngatedMoveToScreenPosition(uint8_t row, uint8_t col);
-void SetScreenColor(const char *);
-void g_printf(const char *format, ...);
-void g_printf_rcc(uint8_t row, uint8_t col, const char *color, const char *format, ...);
-void vPrintBanner( void );
-
-//---------------------------------------------------------------------
 // 8259 PIC (programmable interrupt controller) definitions
 //---------------------------------------------------------------------
 #define IMR1 (0x21)       /* Interrupt Mask Register #1           */
@@ -125,50 +95,48 @@ void vSetIRQMask(uint8_t IRQNumber);
 void vInitializePIT(void);
 
 //---------------------------------------------------------------------
-// LED support for main_blinky()
+// Screen functions
 //---------------------------------------------------------------------
-#define LED_ON			( 1 )
-#define LED_OFF	  		( 0 )
-
-uint32_t ulBlinkLED(void); /* Blink the LED and return the LED status. */
+void vScreenClear(void);
+void vScreenPutchar(int c);
 
 //---------------------------------------------------------------------
-// Serial port support definitions
+// APIC timer definitions
 //---------------------------------------------------------------------
-#define CLIENT_SERIAL_PORT 				0
-#define DEBUG_SERIAL_PORT 				1
+#define APIC_IA32_APIC_BASE_MSR     0x1b
+#define APIC_LOCAL_APIC_BASE        0xfee00000
+#define APIC_LOCAL_APIC_REG(reg)    (*(uint32_t*)((APIC_LOCAL_APIC_BASE) + (reg)))
+#define APIC_APICID                 0x20
+#define APIC_APICVER                0x30
+#define APIC_TASKPRIOR              0x80
+#define APIC_EOI                    0xb0
+#define APIC_LDR                    0xd0
+#define APIC_DFR                    0xe0
+#define APIC_SPURIOUS               0xf0
+#define APIC_ESR                    0x280
+#define APIC_ICRL                   0x300
+#define APIC_ICRH                   0x310
+#define APIC_LVT_TMR                0x320
+#define APIC_LVT_PERF               0x340
+#define APIC_LVT_LINT0              0x350
+#define APIC_LVT_LINT1              0x360
+#define APIC_LVT_ERR                0x370
+#define APIC_TMRINITCNT             0x380
+#define APIC_TMRCURRCNT             0x390
+#define APIC_TMRDIV                 0x3e0
+#define APIC_LAST                   0x38f
+#define APIC_DISABLE                0x10000
+#define APIC_SW_ENABLE              0x100
+#define APIC_CPUFOCUS               0x200
+#define APIC_NMI                    (4 << 8)
+#define TMR_PERIODIC                0x20000
+#define TMR_BASEDIV                 (1 << 20)
 
-#define R_UART_THR                      0
-#define R_UART_IER                      0x04
-#define R_UART_BAUD_THR                 R_UART_THR
-#define R_UART_BAUD_LOW                 R_UART_BAUD_THR
-#define R_UART_BAUD_HIGH                R_UART_IER
-#define R_UART_FCR                      0x08
-#define B_UARY_FCR_TRFIFIE              BIT0
-#define B_UARY_FCR_RESETRF              BIT1
-#define B_UARY_FCR_RESETTF              BIT2
-#define R_UART_LCR                      0x0C
-#define B_UARY_LCR_DLAB                 BIT7
-#define R_UART_MCR                      0x10
-#define R_UART_LSR                      0x14
-#define B_UART_LSR_RXRDY                BIT0
-#define B_UART_LSR_OE                   BIT1
-#define B_UART_LSR_PE                   BIT2
-#define B_UART_LSR_FE                   BIT3
-#define B_UART_LSR_BI                   BIT4
-#define B_UART_LSR_TXRDY                BIT5
-#define B_UART_LSR_TEMT                 BIT6
-#define R_UART_MSR                      0x18
-#define R_UART_SCR                      0x1C
-
-void vInitializeGalileoSerialPort(uint32_t portnumber);
-void vGalileoPrintc(char c);
-uint8_t ucGalileoGetchar();
-void vGalileoPuts(const char *string);
+void vCalibrateTimer(uint32_t timer_vector, uint32_t error_vector, uint32_t spurious_vector);
+void vPollUsTime(uint32_t us);
 
 #ifdef __cplusplus
 	} /* extern C */
 #endif
 
-#endif /* __GALILEO_SUPPORT_H__ */
-
+#endif /* __PC_SUPPORT_H__ */
