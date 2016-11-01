@@ -44,8 +44,7 @@
 
 #define MUTEX_WAIT_TIME	(( TickType_t ) 8 )
 
-#define PIT_SECOND_DIV      (19)
-#define PIT_RELOAD          (1193182 / PIT_SECOND_DIV)
+#define PIT_RELOAD          0xffff
 #define PIT_RELOAD_LOW      (PIT_RELOAD & 0xff)
 #define PIT_RELOAD_HIGH     ((PIT_RELOAD >> 8) & 0xff)
 
@@ -68,7 +67,7 @@ uint32_t bootsign = 1UL;
  */
 static uint16_t usIRQMask = 0xfffb;
 static uint32_t pos = 0;
-static uint32_t apic_count_per_ms;
+static uint32_t apic_ms_count;
 
 /*------------------------------------------------------------------------
  * GDT default entries (used in GDT setup code)
@@ -246,7 +245,7 @@ void vScreenPutchar(int c)
  */
 void vCalibrateTimer(void)
 {
-    uint32_t remain_count;
+    uint32_t remain;
 
     // initialize LAPIC to a well known state
     portAPIC_LDR = 0xFFFFFFFF;
@@ -282,9 +281,11 @@ void vCalibrateTimer(void)
     }
 
     // save LAPIC timer remain count
-    remain_count = portAPIC_TIMER_CURRENT_COUNT;
+    remain = portAPIC_TIMER_CURRENT_COUNT;
     portAPIC_LVT_TIMER = portAPIC_DISABLE;
-    apic_count_per_ms = ((0xffffffff - remain_count) * PIT_SECOND_DIV) / 1000;
+
+    // counts in (PIT_RELOAD / 1193182) second => counts in (1 / 1000) second
+    apic_ms_count = (((uint64_t)(0xffffffff - remain)) * 1193182) / (((uint64_t)(PIT_RELOAD)) * 1000);
 }
 /*-----------------------------------------------------------*/
 
@@ -292,7 +293,7 @@ void vStartTimer(void)
 {
     portAPIC_LVT_TIMER = portAPIC_TIMER_PERIODIC | portAPIC_TIMER_INT_VECTOR;
     portAPIC_TMRDIV = portAPIC_DIV_16;
-    portAPIC_TIMER_INITIAL_COUNT = apic_count_per_ms;
+    portAPIC_TIMER_INITIAL_COUNT = apic_ms_count;
 }
 /*-----------------------------------------------------------*/
 
@@ -302,12 +303,12 @@ void vPollUsTime(uint32_t us)
 
     last = portAPIC_TIMER_CURRENT_COUNT;
     elapse = 0;
-    goal = apic_count_per_ms * us / 1000;
+    goal = apic_ms_count * us / 1000;
 
     while (elapse < goal) {
         curr = portAPIC_TIMER_CURRENT_COUNT;
         if (curr <= last) elapse += last - curr;
-        else elapse += (last - 0) + (apic_count_per_ms - curr);
+        else elapse += (last - 0) + (apic_ms_count - curr);
         last = curr;
     }
 }
