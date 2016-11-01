@@ -68,6 +68,7 @@ uint32_t bootsign = 1UL;
  */
 static uint16_t usIRQMask = 0xfffb;
 static uint32_t pos = 0;
+static uint32_t apic_count_per_ms;
 
 /*------------------------------------------------------------------------
  * GDT default entries (used in GDT setup code)
@@ -227,6 +228,7 @@ void vScreenClear()
 void vScreenPutchar(int c)
 {
 	char *pv = (char*)0xb8000;
+
 	if (pos >= 80 * 25 * 2) vScreenClear();
 	if (c == '\n') {
 		pos = (pos / 160 + 1) * 160;
@@ -242,22 +244,24 @@ void vScreenPutchar(int c)
  * APIC timer calibration and polling
  *------------------------------------------------------------------------
  */
-void vCalibrateTimer(uint32_t timer_vector, uint32_t error_vector, uint32_t spurious_vector)
+void vCalibrateTimer(void)
 {
+    uint32_t remain_count;
+
     // initialize LAPIC to a well known state
-    APIC_LOCAL_APIC_REG(APIC_DFR) = 0xffffffff;
-    APIC_LOCAL_APIC_REG(APIC_LDR) = (APIC_LOCAL_APIC_REG(APIC_LDR) & 0x00ffffff) | 0x01;
-    APIC_LOCAL_APIC_REG(APIC_LVT_TMR) = APIC_DISABLE;
-    APIC_LOCAL_APIC_REG(APIC_LVT_PERF) = APIC_NMI;
-    APIC_LOCAL_APIC_REG(APIC_LVT_LINT0) = APIC_DISABLE;
-    APIC_LOCAL_APIC_REG(APIC_LVT_LINT1) = APIC_DISABLE;
-    APIC_LOCAL_APIC_REG(APIC_TASKPRIOR) = 0;
+    portAPIC_LDR = 0xFFFFFFFF;
+    portAPIC_LDR = ((portAPIC_LDR & 0x00FFFFFF) | 0x00000001);
+    portAPIC_LVT_TIMER = portAPIC_DISABLE;
+    portAPIC_LVT_PERF = portAPIC_NMI;
+    portAPIC_LVT_LINT0 = portAPIC_DISABLE;
+    portAPIC_LVT_LINT1 = portAPIC_DISABLE;
+    portAPIC_TASK_PRIORITY = 0;
 
     // software enable LAPIC
-    APIC_LOCAL_APIC_REG(APIC_SPURIOUS) = APIC_SW_ENABLE | spurious_vector;
-    APIC_LOCAL_APIC_REG(APIC_LVT_ERR) = error_vector;
-    APIC_LOCAL_APIC_REG(APIC_LVT_TMR) = timer_vector;
-    APIC_LOCAL_APIC_REG(APIC_TMRDIV) = 0x3;
+    portAPIC_SPURIOUS_INT = portAPIC_SPURIOUS_INT_VECTOR | portAPIC_ENABLE_BIT;
+    portAPIC_LVT_ERROR = portAPIC_LVT_ERROR_VECTOR;
+    portAPIC_LVT_TIMER = portAPIC_TIMER_INT_VECTOR;
+    portAPIC_TMRDIV = portAPIC_DIV_16;
 
     // set PIT reload value
     outb(0x43, 0x34);
@@ -265,7 +269,7 @@ void vCalibrateTimer(uint32_t timer_vector, uint32_t error_vector, uint32_t spur
     outb(0x40, PIT_RELOAD_HIGH);
 
     // reset LAPIC timer
-    APIC_LOCAL_APIC_REG(APIC_TMRINITCNT) = 0xffffffff;
+    portAPIC_TIMER_INITIAL_COUNT = 0xffffffff;
  
     // wait until PIT counter wraps
     while(1) {
@@ -278,13 +282,17 @@ void vCalibrateTimer(uint32_t timer_vector, uint32_t error_vector, uint32_t spur
     }
 
     // save LAPIC timer remain count
-    uint32_t remain_count = APIC_LOCAL_APIC_REG(APIC_TMRCURRCNT);
-    APIC_LOCAL_APIC_REG(APIC_LVT_TMR) = APIC_DISABLE;
+    remain_count = portAPIC_TIMER_CURRENT_COUNT;
+    portAPIC_LVT_TIMER = portAPIC_DISABLE;
+    apic_count_per_ms = ((0xffffffff - remain_count) * PIT_SECOND_DIV) / 1000;
+}
+/*-----------------------------------------------------------*/
 
-    // start periodic mode with the correct initial count
-    APIC_LOCAL_APIC_REG(APIC_LVT_TMR) = timer_vector | TMR_PERIODIC;
-    APIC_LOCAL_APIC_REG(APIC_TMRDIV) = 0x3;
-    APIC_LOCAL_APIC_REG(APIC_TMRINITCNT) = ((0xffffffff - remain_count) * PIT_SECOND_DIV) / 1000; // APIC timer ticks in 1 ms
+void vStartTimer(void)
+{
+    portAPIC_LVT_TIMER = portAPIC_TIMER_PERIODIC | portAPIC_TIMER_INT_VECTOR;
+    portAPIC_TMRDIV = portAPIC_DIV_16;
+    portAPIC_TIMER_INITIAL_COUNT = apic_count_per_ms;
 }
 /*-----------------------------------------------------------*/
 
@@ -292,14 +300,14 @@ void vPollUsTime(uint32_t us)
 {
     uint32_t curr, last, elapse, goal;
 
-    last = APIC_LOCAL_APIC_REG(APIC_TMRCURRCNT);
+    last = portAPIC_TIMER_CURRENT_COUNT;
     elapse = 0;
-    goal = APIC_LOCAL_APIC_REG(APIC_TMRINITCNT) * us / 1000;
+    goal = apic_count_per_ms * us / 1000;
 
     while (elapse < goal) {
-        curr = APIC_LOCAL_APIC_REG(APIC_TMRCURRCNT);
+        curr = portAPIC_TIMER_CURRENT_COUNT;
         if (curr <= last) elapse += last - curr;
-        else elapse += (last - 0) + (APIC_LOCAL_APIC_REG(APIC_TMRINITCNT) - curr);
+        else elapse += (last - 0) + (apic_count_per_ms - curr);
         last = curr;
     }
 }

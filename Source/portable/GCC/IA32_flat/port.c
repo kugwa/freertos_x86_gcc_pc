@@ -74,7 +74,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-/* Timer Calibration */
+/* APIC Timer. */
 #include "pc_support.h"
 
 #if ( configUSE_PORT_OPTIMISED_TASK_SELECTION == 1 )
@@ -105,10 +105,6 @@ context. */
 
 /* Only the IF bit is set so tasks start with interrupts enabled. */
 #define portINITIAL_EFLAGS				( 0x200UL )
-
-/* Error interrupts are at the highest priority vectors. */
-#define portAPIC_LVT_ERROR_VECTOR 		( 0xfe )
-#define portAPIC_SPURIOUS_INT_VECTOR 	( 0xff )
 
 /* EFLAGS bits. */
 #define portEFLAGS_IF					( 0x200UL )
@@ -390,7 +386,7 @@ extern void vPortAPICSpuriousHandler( void );
 	prvSetInterruptGate( ( uint8_t ) portAPIC_SPURIOUS_INT_VECTOR, vPortAPICSpuriousHandler, portIDT_FLAGS );
 
 	/* Set the interrupt frequency. */
-	vCalibrateTimer(portAPIC_TIMER_INT_VECTOR, portAPIC_LVT_ERROR_VECTOR, portAPIC_SPURIOUS_INT_VECTOR);
+	vCalibrateTimer();
 }
 /*-----------------------------------------------------------*/
 
@@ -422,10 +418,7 @@ BaseType_t xWord;
 	ulCriticalNesting = 0;
 
 	/* Enable LAPIC Counter.*/
-	portAPIC_LVT_TIMER = portAPIC_TIMER_PERIODIC | portAPIC_TIMER_INT_VECTOR;
-
-	/* Sometimes needed. */
-	portAPIC_TMRDIV = portAPIC_DIV_16;
+	vStartTimer();
 
 	/* Should not return from the following function as the scheduler will then
 	be executing the tasks. */

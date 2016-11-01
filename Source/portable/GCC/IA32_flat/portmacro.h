@@ -119,6 +119,10 @@ in the portYIELD_INTERRUPT definition immediately below. */
 #define portAPIC_TIMER_INT_VECTOR 		( 0x21 )
 #define portAPIC_YIELD_INT_VECTOR 		( 0x20 )
 
+/* Error interrupts are at the highest priority vectors. */
+#define portAPIC_LVT_ERROR_VECTOR 		( 0xfe )
+#define portAPIC_SPURIOUS_INT_VECTOR 	( 0xff )
+
 /* Build yield interrupt instruction. */
 #define portYIELD_INTERRUPT "int $0x20"
 
@@ -142,6 +146,7 @@ in the portYIELD_INTERRUPT definition immediately below. */
 #define portAPIC_LVT_ERROR				( *( ( volatile uint32_t * ) ( configAPIC_BASE + 0x370UL ) ) )
 #define portAPIC_ERROR_STATUS			( *( ( volatile uint32_t * ) ( configAPIC_BASE + 0x280UL ) ) )
 #define portAPIC_LDR	 				( *( ( volatile uint32_t * ) ( configAPIC_BASE + 0xD0UL  ) ) )
+#define portAPIC_DFR	 				( *( ( volatile uint32_t * ) ( configAPIC_BASE + 0xE0UL  ) ) )
 #define portAPIC_TMRDIV 				( *( ( volatile uint32_t * ) ( configAPIC_BASE + 0x3E0UL ) ) )
 #define portAPIC_LVT_PERF 				( *( ( volatile uint32_t * ) ( configAPIC_BASE + 0x340UL ) ) )
 #define portAPIC_LVT_LINT0 				( *( ( volatile uint32_t * ) ( configAPIC_BASE + 0x350UL ) ) )
