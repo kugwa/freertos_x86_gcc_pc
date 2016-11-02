@@ -1,4 +1,5 @@
 #include <stdarg.h>
+#include <stdint.h>
 #include "pc_support.h"
 
 static void my_puts(const char *s)
@@ -7,7 +8,7 @@ static void my_puts(const char *s)
     for (i = 0; s[i] != '\0'; i++) vScreenPutchar(s[i]);
 }
 
-static void my_putn(unsigned int n, unsigned int base)
+static void my_putn(uint32_t n, uint32_t base)
 {
     char n2c[] = "0123456789abcdef";
     char s[20], *ps;
@@ -25,13 +26,22 @@ void printf(const char *format, ...)
 {
     va_list args;
     unsigned int i;
+    int32_t n;
 
     va_start(args, format);
     for (i = 0; format[i]; i++) {
         if (format[i] == '%') {
             i++;
-            if (format[i] == 'x') my_putn(va_arg(args, unsigned int), 16);
-            else if (format[i] == 'd') my_putn(va_arg(args, unsigned int), 10);
+            if (format[i] == 'd') {
+                n = va_arg(args, int32_t);
+                if (n < 0) {
+                    vScreenPutchar('-');
+                    n = -n;
+                }
+                my_putn((uint32_t)n, 10);
+            }
+            else if (format[i] == 'x') my_putn(va_arg(args, uint32_t), 16);
+            else if (format[i] == 'u') my_putn(va_arg(args, uint32_t), 10);
             else if (format[i] == 's') my_puts(va_arg(args, const char *));
             else if (format[i] == '%') vScreenPutchar('%');
             else if (format[i] == '\0') break;
