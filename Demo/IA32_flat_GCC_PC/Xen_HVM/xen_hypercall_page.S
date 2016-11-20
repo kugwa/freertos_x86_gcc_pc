@@ -39,4 +39,20 @@ wrmsr:
     wrmsr
     ret
 
+.globl  hypercall
+hypercall:
+    pushl   %ebp
+    movl    8(%esp), %eax
+    shll    $5, %eax
+    addl    $hypercall_page, %eax
+    movl    12(%esp), %ebx
+    movl    16(%esp), %ecx
+    movl    20(%esp), %edx
+    movl    24(%esp), %esi
+    movl    28(%esp), %edi
+    movl    32(%esp), %ebp
+    calll   %eax
+    popl    %ebp
+    ret
+
 .end
