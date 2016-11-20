@@ -51,7 +51,7 @@ hypercall:
     movl    24(%esp), %esi
     movl    28(%esp), %edi
     movl    32(%esp), %ebp
-    calll   %eax
+    calll   *%eax
     popl    %ebp
     ret
 
