@@ -1,10 +1,4 @@
-#define PAGE_SIZE (1 << 12)
-
-    .text
-    .balign PAGE_SIZE
-.globl  hypercall_page
-hypercall_page:
-    .skip   PAGE_SIZE
+.extern hypercall_page
 
 .globl  cpuid
 cpuid:
