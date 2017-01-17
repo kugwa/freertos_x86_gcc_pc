@@ -6,8 +6,8 @@ INCLUDE_DIR     :=  -I$(SOURCE_ROOT)/Source/include \
                     -I$(SOURCE_ROOT)/Source/portable/GCC/IA32_flat \
                     -I$(SOURCE_ROOT)/Demo/Common/include \
                     -I$(SOURCE_ROOT)/Demo/IA32_flat_GCC_PC/Support_Files \
-                    -I$(SOURCE_ROOT)/Demo/IA32_flat_GCC_PC/$(PROJECT) \
-                    -I$(SOURCE_ROOT)/Demo/IA32_flat_GCC_PC/$(PROJECT)/xen_headers
+                    -I$(SOURCE_ROOT)/Demo/IA32_flat_GCC_PC/Support_Files/libxen/include \
+                    -I$(SOURCE_ROOT)/Demo/IA32_flat_GCC_PC/$(PROJECT)
 SOURCE_DIR      :=  $(SOURCE_ROOT)/Source \
                     $(SOURCE_ROOT)/Demo/IA32_flat_GCC_PC/Support_Files \
                     $(SOURCE_ROOT)/Demo/IA32_flat_GCC_PC/$(PROJECT)

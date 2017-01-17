@@ -6,8 +6,8 @@
 #include "xen_support.h"
 
 #define __XEN_INTERFACE_VERSION__ 0x00040600
-#include "xen.h"
-#include "grant_table.h"
+#include "public/xen.h"
+#include "public/grant_table.h"
 
 static void prvLoopTask( void *pvParameters )
 {
