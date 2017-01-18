@@ -32,5 +32,5 @@ void xen_init_hypercall_page(uint32_t base)
 
     eax = base + 2;
     cpuid(&eax, &ebx, &ecx, &edx);
-    wrmsr(ebx, hypercall_page, 0);
+    wrmsr(ebx, (uint32_t)hypercall_page, 0);
 }
