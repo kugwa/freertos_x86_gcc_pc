@@ -16,9 +16,8 @@
 #include "public/io/xs_wire.h"
 #include "public/io/ring.h"
 
-int store_evtchn;
-struct xenstore_domain_interface *xs_intf;
-struct evtchn_send event;
+static int store_evtchn;
+static struct xenstore_domain_interface *xs_intf;
 
 #define NOTIFY() \
     do {\
@@ -75,18 +74,17 @@ static int writeKeyValue(char *key, char *value)
     xs_header.req_id = 408;
     xs_header.tx_id = 0;
     xs_header.len = k_len + v_len;
-    /* write message */
+
     writeReq((char*)&xs_header, sizeof(struct xsd_sockmsg));
     writeReq(key, k_len);
     writeReq(value, v_len);
-    /* notify */
+
     NOTIFY();
     readRsp((char*)&xs_header, sizeof(struct xsd_sockmsg));
     if (xs_header.type == XS_ERROR) {
-        printf("error for write (%s, %s).\n", key, value);
         char errmsg[XENSTORE_RING_SIZE] = {0};
         readRsp(errmsg, xs_header.len);
-        printf("reason : %s\n", errmsg);
+        printf("Error writing (%s, %s), %s.\n", key, value, errmsg);
         return -1;
     }
     IGNORE(xs_header.len);
@@ -101,14 +99,14 @@ static int readValue(char *key, char *value, uint32_t value_len)
     xs_header.req_id = 804;
     xs_header.tx_id = 0;
     xs_header.len = k_len;
-    /* write message */
+
     writeReq((char*)&xs_header, sizeof(struct xsd_sockmsg));
     writeReq(key, k_len);
-    /* notify */
+
     NOTIFY();
     readRsp((char*)&xs_header, sizeof(struct xsd_sockmsg));
     if (xs_header.req_id != 804) {
-        printf("wrong req id\n");
+        printf("Wrong req id.\n");
         return -1;
     }
     if (value_len >= xs_header.len) {
@@ -120,6 +118,15 @@ static int readValue(char *key, char *value, uint32_t value_len)
     return -2;
 }
 
+#define GET_EVTCHN_BIT(map, bit) \
+    (((map)[(bit) / sizeof(xen_ulong_t)] & (1 << ((bit) % sizeof(xen_ulong_t)))) > 0)
+
+#define SET_EVTCHN_BIT(map, bit) \
+    (map)[(bit) / sizeof(xen_ulong_t)] |= (1 << ((bit) % sizeof(xen_ulong_t)))
+
+#define CLEAR_EVTCHN_BIT(map, bit) \
+    (map)[(bit) / sizeof(xen_ulong_t)] &= (~(1 << ((bit) % sizeof(xen_ulong_t))))
+
 static void prvLoopTask( void *pvParameters )
 {
     uint32_t base;
@@ -130,24 +137,23 @@ static void prvLoopTask( void *pvParameters )
     }
     xen_init_hypercall_page(base);
 
-    //try to build xenstore communication 
     struct xen_hvm_param xhv;
     xhv.domid = DOMID_SELF;
     xhv.index = HVM_PARAM_STORE_EVTCHN;
-    if (hypercall(__HYPERVISOR_hvm_op, HVMOP_get_param, (uint32_t)&xhv, 0, 0 ,0, 0) != 0) {
-        printf("failed to get event channel.\n");
+    if (hypercall(__HYPERVISOR_hvm_op, HVMOP_get_param,
+            (uint32_t)&xhv, 0, 0 ,0, 0) != 0) {
+        printf("Failed to get event channel.\n");
         goto loop;
     }
     store_evtchn = xhv.value;
-    printf("event channel : %x\n\n", store_evtchn);
     xhv.index = HVM_PARAM_STORE_PFN;
-    if (hypercall(__HYPERVISOR_hvm_op, HVMOP_get_param, (uint32_t)&xhv, 0, 0 ,0, 0) != 0) {
-        printf("failed to get machine frame number.\n");
+    if (hypercall(__HYPERVISOR_hvm_op, HVMOP_get_param,
+            (uint32_t)&xhv, 0, 0 ,0, 0) != 0) {
+        printf("Failed to get machine frame number.\n");
         goto loop;
     }
     xs_intf = (struct xenstore_domain_interface *)((uint32_t)xhv.value << 12);
 
-    //get shared info page
     struct shared_info *sip = (struct shared_info *)shared_info_page;
     struct xen_add_to_physmap xatp;
     xatp.domid = DOMID_SELF;
@@ -156,51 +162,31 @@ static void prvLoopTask( void *pvParameters )
     xatp.gpfn = (((uint32_t)sip) >> 12);
     if (hypercall(__HYPERVISOR_memory_op, XENMEM_add_to_physmap,
             (uint32_t)&xatp, 0, 0, 0, 0) != 0) {
-        printf("error for mapping shared info page\n");
+        printf("Failed to map shared info page\n");
         goto loop;
     }
 
-    //get some information from event channel
     evtchn_status_t chn_status;
     chn_status.dom = DOMID_SELF;
     chn_status.port = store_evtchn;
     hypercall(__HYPERVISOR_event_channel_op, EVTCHNOP_status,
         (uint32_t)&chn_status, 0, 0, 0, 0);
-    //printf("get information from event channel\n");
     if (chn_status.status == EVTCHNSTAT_interdomain) {
-        printf("event channel is bound\n");
+        printf("chn_status.status = EVTCHNSTAT_interdomain\n");
     } else {
-        printf("event channel status : %x\n", chn_status.status);
+        printf("chn_status.status = %x\n", chn_status.status);
     }
 
-    //see event channel pending
-    int evt_byte = (sip->evtchn_pending[(store_evtchn >> 5)]);
-    int bit_idx = 1 << (store_evtchn & (((1 << 5) - 1)));
-    int if_pending = (evt_byte & bit_idx) > 0;
-    printf("before send : %d\n", if_pending);
+    printf("xenstore-write...\n");
+    writeKeyValue("data", "408");
+    CLEAR_EVTCHN_BIT(sip->evtchn_pending, store_evtchn);
+    printf("Done.\n");
 
-    //write key value to xen store
-    char test_key[5] = "data\0", test_value[3] = "408"; //body
-    printf("try to write xenstore\n");
-    writeKeyValue(test_key, test_value);
-
-    evt_byte = (sip->evtchn_pending[(store_evtchn >> 5)]);
-    if_pending = (evt_byte & bit_idx) > 0;
-    printf("after send : %d\n", if_pending);
-
-/*
-    //write second value
-    char test_value2[3] = "804";
-    printf("try to write second time\n");
-    writeKeyValue(test_key, test_value2);
-
-    //read value
+    /*
     char ret_value[128] = {0};
-    printf("try to read value");
-    readValue(test_key, ret, 128);
-    printf("read value : %s\n", ret_value);
-    printf("this is the end of sending message.\n");
-*/
+    readValue("data", ret_value, 128);
+    printf("readValue(\"data\") = %s\n", ret_value);
+    */
 
 loop:
     (void)pvParameters;
