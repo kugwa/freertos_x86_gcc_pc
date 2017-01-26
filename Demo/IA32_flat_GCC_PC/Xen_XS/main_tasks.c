@@ -18,6 +18,7 @@
 
 static int store_evtchn;
 static struct xenstore_domain_interface *xs_intf;
+char dummy[XENSTORE_RING_SIZE];
 
 #define NOTIFY() \
     do {\
@@ -28,7 +29,6 @@ static struct xenstore_domain_interface *xs_intf;
 
 #define IGNORE(n) \
     do {\
-        char dummy[XENSTORE_RING_SIZE];\
         readRsp(dummy, (n));\
     } while(0)
 
@@ -82,9 +82,8 @@ static int writeKeyValue(char *key, char *value)
     NOTIFY();
     readRsp((char*)&xs_header, sizeof(struct xsd_sockmsg));
     if (xs_header.type == XS_ERROR) {
-        char errmsg[XENSTORE_RING_SIZE] = {0};
-        readRsp(errmsg, xs_header.len);
-        printf("Error writing (%s, %s), %s.\n", key, value, errmsg);
+        readRsp(dummy, xs_header.len);
+        printf("Error writing (%s, %s), %s.\n", key, value, dummy);
         return -1;
     }
     IGNORE(xs_header.len);
@@ -99,20 +98,22 @@ static int readValue(char *key, char *value, uint32_t value_len)
     xs_header.req_id = 804;
     xs_header.tx_id = 0;
     xs_header.len = k_len;
-
     writeReq((char*)&xs_header, sizeof(struct xsd_sockmsg));
     writeReq(key, k_len);
-
     NOTIFY();
+    
     readRsp((char*)&xs_header, sizeof(struct xsd_sockmsg));
     if (xs_header.req_id != 804) {
-        printf("Wrong req id.\n");
+        printf("Wrong req id (%d).\n", xs_header.req_id);
+        IGNORE(xs_header.len);
         return -1;
     }
+
     if (value_len >= xs_header.len) {
         readRsp(value, xs_header.len);
         return 0;
     }
+
     readRsp(value, value_len);
     IGNORE(xs_header.len - value_len);
     return -2;
@@ -182,13 +183,12 @@ static void prvLoopTask( void *pvParameters )
     CLEAR_EVTCHN_BIT(sip->evtchn_pending, store_evtchn);
     printf("Done.\n");
 
-    /*
     char ret_value[128] = {0};
-    readValue("data", ret_value, 128);
+    int ret = readValue("data", ret_value, 128);
+    printf("ret : %d\n", ret);
     printf("readValue(\"data\") = %s\n", ret_value);
-    */
 
-loop:
+    loop:
     (void)pvParameters;
     TickType_t xNextWakeTime = xTaskGetTickCount();
     while (1) vTaskDelayUntil(&xNextWakeTime, pdMS_TO_TICKS(1000));
