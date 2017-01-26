@@ -5,6 +5,9 @@
 .globl  grant_page
 grant_page:
     .skip   PAGE_SIZE
+.globl  shared_info_page
+shared_info_page:
+    .skip   PAGE_SIZE
 
     .text
     .balign PAGE_SIZE

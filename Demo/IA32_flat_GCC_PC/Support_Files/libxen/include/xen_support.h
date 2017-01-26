@@ -2,6 +2,7 @@
 
 extern struct { char _entry[32]; } hypercall_page[];
 extern char grant_page[];
+extern char shared_info_page[];
 
 void cpuid(uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx);
 void rdmsr(uint32_t msr, uint32_t *low, uint32_t *high);

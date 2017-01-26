@@ -178,3 +178,11 @@ volatile int iIndex = 0;
 
 	return pcDest;
 }
+/*-----------------------------------------------------------*/
+
+unsigned long strlen( const char *pcString )
+{
+	const char *s;
+	for (s = pcString; *s; s++) ;
+	return s - pcString;
+}
