@@ -29,7 +29,8 @@ LD              :=  i686-elf-gcc
 LDFLAGS         :=  -nostdlib -Xlinker -T -Xlinker $(LDS) -Xlinker -Map=$(MAP) -Xlinker --gc-sections
 LDADD           :=  -lgcc
 CC              :=  i686-elf-gcc
-CFLAGS          :=  $(INCLUDE_DIR) -O0 -g3 -Wall -Wextra -c -fmessage-length=0 -march=pentium \
+CFLAGS          :=  $(INCLUDE_DIR) -D'__XEN_INTERFACE_VERSION__=0x00040400' \
+                    -O0 -g3 -Wall -Wextra -c -fmessage-length=0 -march=pentium \
                     -Wno-ignored-qualifiers -mno-ms-bitfields -ffunction-sections -ffreestanding
 AS              :=  i686-elf-gcc
 SFLAGS          :=  $(INCLUDE_DIR) -Wa,--gdwarf2 -Wa,-march=pentium -c
@@ -39,15 +40,18 @@ SFLAGS          :=  $(INCLUDE_DIR) -Wa,--gdwarf2 -Wa,-march=pentium -c
 all: $(BUILD)
 
 $(BUILD): $(OBJECT)
-	$(LD) $(LDFLAGS) -o $(BUILD) $(OBJECT) $(LDADD)
+	@echo "LD      $(BUILD)"
+	@$(LD) $(LDFLAGS) -o $(BUILD) $(OBJECT) $(LDADD)
 
 $(OBJECT_ROOT)/%.o: $(SOURCE_ROOT)/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -o $@ $<
+	@echo "CC      $@"
+	@$(CC) $(CFLAGS) -o $@ $<
 
 $(OBJECT_ROOT)/%.o: $(SOURCE_ROOT)/%.S
 	@mkdir -p $(dir $@)
-	$(AS) $(SFLAGS) -o $@ $<
+	@echo "AS      $@"
+	@$(AS) $(SFLAGS) -o $@ $<
 
 clean:
 	rm -f $(BUILD) $(MAP) $(OBJECT)
