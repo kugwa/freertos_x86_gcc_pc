@@ -27,16 +27,18 @@ static int atoi(char *s)
 static void prvLoopTask( void *pvParameters )
 {
     struct gnttab_map_grant_ref map_op;
-    char ref[5] = {0}, dom[5] = {0};
-    int ret;
+    char ref[5], dom[5];
+    int i, ret;
 
     if (xen_support_init() != 0) goto loop;
 
     /* Get domW's dom and ref */
     do {
+        for (i = 0; i < 5; i++) ref[i] = 0;
         ret = xenstore_read("data/nex/remote-gref", ref, 3);
     } while( ret < 0 || ref[0] == 0 );
     do {
+        for (i = 0; i < 5; i++) dom[i] = 0;
         ret = xenstore_read("data/nex/remote-dom", dom, 3);
     } while( ret < 0 || dom[0] == 0 );
 
