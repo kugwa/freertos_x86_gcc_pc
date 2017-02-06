@@ -4,27 +4,14 @@
 #include "stdint.h"
 #include "pc_support.h"
 #include "xen_support.h"
-#include "xenstore.h"
 
 static void prvLoopTask( void *pvParameters )
 {
-    uint32_t base;
-    base = xen_cpuid_base();
-    if (base == 0) {
-        printf("Xen hypervisor not found.\n\n");
-        goto loop;
-    }
-    xen_init_hypercall_page(base);
-
-    xenstore_init();
-
-    printf("xenstore-write...\n");
-    xenstore_write("data", "408");
-    printf("Done.\n");
+    if (xen_support_init() != 0) goto loop;
 
     char ret_value[128] = {0};
-    xenstore_read("data", ret_value, 128);
-    printf("readValue(\"data\") = %s\n", ret_value);
+    xenstore_read("domid", ret_value, 128);
+    printf("%s: xenstore_read(\"domid\") = %s\n", __func__, ret_value);
 
 loop:
     (void)pvParameters;

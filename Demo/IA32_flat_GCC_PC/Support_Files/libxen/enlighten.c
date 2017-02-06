@@ -1,5 +1,7 @@
 #include "stdint.h"
-#include "xen_support.h"
+#include "page.h"
+#include "hypercall.h"
+#include "enlighten.h"
 
 uint32_t xen_cpuid_base()
 {
