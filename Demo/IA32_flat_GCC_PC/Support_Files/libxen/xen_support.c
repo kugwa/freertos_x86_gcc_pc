@@ -5,6 +5,8 @@
 #include "public/xen.h"
 #include "public/grant_table.h"
 
+char *shm = grant_page + 28;
+
 static int atoi(char *s)
 {
 	int slen = 0;

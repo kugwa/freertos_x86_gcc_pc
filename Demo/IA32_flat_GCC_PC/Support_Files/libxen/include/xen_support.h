@@ -3,4 +3,6 @@
 #include "enlighten.h"
 #include "xenstore.h"
 
+extern char *shm;
+
 int xen_support_init(void);
