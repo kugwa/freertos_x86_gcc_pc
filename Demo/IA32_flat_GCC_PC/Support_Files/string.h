@@ -19,4 +19,10 @@ char *strcpy( char *pcDest, const char *pcSource );
 void *memset( void *pvDest, int iValue, unsigned long ulBytes );
 void *memcpy( void *pvDest, const void *pvSource, unsigned long ulBytes );
 int memcmp( const void *pvMem1, const void *pvMem2, unsigned long ulBytes );
+
+/*
+ * FreeBSD implementation
+ */
+#include "strtok.h"
+
 #endif /* string_h */
